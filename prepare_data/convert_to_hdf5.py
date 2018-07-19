@@ -5,7 +5,7 @@ from PIL import Image
 import glob
 import random
 import os
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
 
 def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DATA'):
     """
@@ -15,6 +15,7 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
     :param TEST_SUBSET_DATA: True when only generating from a subset of all files
     :param hdf5_file_name: name of the output HDF5 file
     """
+    dt = h5py.special_dtype(vlen=str)
     training_mean_new = np.zeros((img_size, img_size, 3), dtype=np.float32)
     training_mean_old = np.zeros((img_size, img_size, 3), dtype=np.float32)
     training_variance = np.zeros((img_size, img_size, 3), dtype=np.float32)
@@ -37,6 +38,9 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
                                    np.uint8, compression="gzip")
         hdf5_output.create_dataset("test_img", (len(files_dict["test_img"]), img_size, img_size, 3),
                                    np.uint8, compression="gzip")
+        hdf5_output.create_dataset("train_files",(len(files_dict["train_img"]),1),dt)
+        hdf5_output.create_dataset("val_files",(len(files_dict["val_img"]),1),dt)
+        hdf5_output.create_dataset("test_files",(len(files_dict["test_img"]),1),dt)
         hdf5_output.create_dataset("train_mean", (img_size, img_size, 3), np.float32, compression="gzip")
         hdf5_output.create_dataset("train_std", (img_size, img_size, 3), np.float32, compression="gzip")
 
@@ -45,11 +49,13 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
         files_dict["val_img"] = files[int(0.7 * len(files)):int(0.85 * len(files))]
         files_dict["test_img"] = files[int(0.85 * len(files)):]
         print("Length of files array: {}".format(len(files)))
-
         hdf5_output = h5py.File(hdf5_file_name, mode='w')
         hdf5_output.create_dataset("train_img", (len(files_dict["train_img"]), img_size, img_size, 3), np.uint8)
         hdf5_output.create_dataset("val_img", (len(files_dict["val_img"]), img_size, img_size, 3), np.uint8)
         hdf5_output.create_dataset("test_img", (len(files_dict["test_img"]), img_size, img_size, 3), np.uint8)
+        hdf5_output.create_dataset("train_files", (len(files_dict["train_img"]),1),dt)
+        hdf5_output.create_dataset("val_files", (len(files_dict["val_img"]),1),dt)
+        hdf5_output.create_dataset("test_files", (len(files_dict["test_img"]),1),dt)
         hdf5_output.create_dataset("train_mean", (img_size, img_size, 3), np.float32)
         hdf5_output.create_dataset("train_std", (img_size, img_size, 3), np.float32)
 
@@ -58,19 +64,21 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
     for img_type, img_list in files_dict.items():
         for index, fileName in enumerate(img_list):
             im = Image.open(fileName)
+            # im.show()
             # Discard black and white images, breaks rest of pipeline
             if im.mode == 'RGB':
-                # If its taller than it is wide, crop first
-                if im.size[1] > im.size[0]:
-                    crop_shift = random.randrange(im.size[1] - im.size[0])
-                    im = im.crop(
-                        (0, crop_shift, im.size[0], im.size[0] + crop_shift))
-                elif im.size[0] > im.size[1]:
-                    crop_shift = random.randrange(im.size[0] - im.size[1])
-                    im = im.crop(
-                        (crop_shift, 0, im.size[1] + crop_shift, im.size[1]))
-                im = im.resize((img_size, img_size), resample=Image.LANCZOS)
+                # If its taller than it is wide, crop first (NOT A GOOD IDEA for breast cancer dataset
+                # if im.size[1] > im.size[0]:
+                #     crop_shift = random.randrange(im.size[1] - im.size[0])
+                #     im = im.crop(
+                #         (0, crop_shift, im.size[0], im.size[0] + crop_shift))
+                # elif im.size[0] > im.size[1]:
+                #     crop_shift = random.randrange(im.size[0] - im.size[1])
+                #     im = im.crop(
+                #         (crop_shift, 0, im.size[1] + crop_shift, im.size[1]))
+                im = im.resize((img_size, img_size), resample=Image.ANTIALIAS)#LANCZOS)
                 numpy_image = np.array(im, dtype=np.uint8)
+                # im.show()
                 # Calculate per feature mean and variance on training data only
                 if img_type == "train_img":
                     # Using Welford method for online calculation of mean and
@@ -87,6 +95,8 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
                         training_mean_old = numpy_image
                 # Save the image to the HDF5 output file
                 hdf5_output[img_type][index, ...] = numpy_image
+                file_type_name=img_type[:-3]+'files'
+                hdf5_output[file_type_name][index]=fileName
                 if index % 1000 == 0 and index > 0:
                     small_end = time()
                     print("Saved {} {}s to hdf5 file in {} seconds".format(
@@ -102,10 +112,10 @@ def generate_data(files, img_size=256, TEST_SUBSET_DATA=True, hdf5_file_name='DA
 
 
 if __name__ == "__main__":
-    directory = "/home/cougarnet.uh.edu/amobiny/Desktop/DATASETS/unlabeled2017/"
+    directory = "/data/aditi/BreaKHis_v1/all_data/"
     # path to images; download link: http://images.cocodataset.org/zips/unlabeled2017.zip
-    file_names = glob.glob(directory + "*.jpg")
+    file_names = glob.glob(directory + "*.png")
     generate_data(file_names,
                   img_size=256,
-                  TEST_SUBSET_DATA=False,
-                  hdf5_file_name='COCO_2017_unlabeled.h5')
+                  TEST_SUBSET_DATA=True,
+                  hdf5_file_name='mturk_unlabeled.h5')
