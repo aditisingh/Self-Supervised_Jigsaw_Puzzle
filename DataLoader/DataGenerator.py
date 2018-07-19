@@ -1,7 +1,8 @@
 import h5py
 import random
 import numpy as np
-
+from scipy.misc import imread, imshow
+from PIL import Image
 
 class DataGenerator:
     """
@@ -35,28 +36,32 @@ class DataGenerator:
 
     def batch_counter(self):
         h5f = h5py.File(self.data_path, 'r')
-        self.numTrainBatch = h5f['train_img'][:].shape[0] // self.batchSize
-        self.numValBatch = h5f['val_img'][:].shape[0] // self.batchSize
-        self.numTestBatch = h5f['test_img'][:].shape[0] // self.batchSize
+        self.numTrainBatch = 1 + h5f['train_img'][:].shape[0] // self.batchSize
+        self.numValBatch = 1 + h5f['val_img'][:].shape[0] // self.batchSize
+        self.numTestBatch = 1 + h5f['test_img'][:].shape[0] // self.batchSize
         h5f.close()
         self.batchIndexTrain = 0
         self.batchIndexVal = 0
         self.batchIndexTest = 0
 
-    def __data_generation_normalize(self, x):
+    def __data_generation_normalize(self, x1):
         """
         Explain
         """
-        x -= self.meanTensor
-        x /= self.stdTensor
+        x1 -= self.meanTensor
+        x1 /= self.stdTensor
+        sz = min(self.batchSize,x1.shape[0])
         # This implementation modifies each image individually
-        y = np.empty(self.batchSize)
+        y = np.empty(sz)#self.batchSize)
         # Python list of 4D numpy tensors for each channel
-        X = [np.empty((self.batchSize, self.tileSize, self.tileSize, self.numChannels), np.float32)
+        X = [np.empty((sz, self.tileSize, self.tileSize, self.numChannels), np.float32)
              for _ in range(self.numCrops)]
-        for image_num in range(self.batchSize):
+        # img1 = Image.fromarray(x1.astype(np.uint8)[0,:,:,:], 'RGB')
+        # img.save('my.png')
+        # img1.show()
+        for image_num in range(sz):#self.batchSize):
             # Transform the image into its nine crops
-            single_image, y[image_num] = self.create_croppings(x[image_num])
+            single_image, y[image_num] = self.create_croppings(x1[image_num])
             for image_location in range(self.numCrops):
                 X[image_location][image_num, :, :, :] = single_image[:, :, :, image_location]
         return X, y
@@ -73,7 +78,12 @@ class DataGenerator:
         """
         if mode == 'train':
             h5f = h5py.File(self.data_path, 'r')
-            x = h5f['train_img'][self.batchIndexTrain * self.batchSize:(self.batchIndexTrain + 1) * self.batchSize, ...]
+            x = h5f['train_img']
+            x = x[self.batchIndexTrain * self.batchSize:(self.batchIndexTrain + 1) * self.batchSize, ...]
+            x_files = h5f['train_files'][self.batchIndexTrain * self.batchSize:(self.batchIndexTrain + 1) * self.batchSize]
+            # img1 = Image.fromarray(x[0], 'RGB')
+            # img.save('my.png')
+            # img1.show()
             h5f.close()
             X, y = self.__data_generation_normalize(x.astype(np.float32))
             self.batchIndexTrain += 1  # Increment the batch index
@@ -82,6 +92,7 @@ class DataGenerator:
         elif mode == 'valid':
             h5f = h5py.File(self.data_path, 'r')
             x = h5f['val_img'][self.batchIndexVal * self.batchSize:(self.batchIndexVal + 1) * self.batchSize, ...]
+            x_files = h5f['val_files'][self.batchIndexVal * self.batchSize:(self.batchIndexVal + 1) * self.batchSize]
             h5f.close()
             X, y = self.__data_generation_normalize(x.astype(np.float32))
             self.batchIndexVal += 1  # Increment the batch index
@@ -89,13 +100,16 @@ class DataGenerator:
                 self.batchIndexVal = 0
         elif mode == 'test':
             h5f = h5py.File(self.data_path, 'r')
-            x = h5f['test_img'][self.batchIndexTest * self.batchSize:(self.batchIndexTest + 1) * self.batchSize, ...]
+            x = h5f['test_img']
+            x=x[self.batchIndexTest * self.batchSize:min((self.batchIndexTest + 1) * self.batchSize,x.shape[0]), ...]
+            x_files = h5f['test_files']
+            x_files=x_files[self.batchIndexTest * self.batchSize:min((self.batchIndexTest + 1) * self.batchSize,x_files.shape[0])]
             h5f.close()
             X, y = self.__data_generation_normalize(x.astype(np.float32))
             self.batchIndexTest += 1  # Increment the batch index
             if self.batchIndexTest == self.numTestBatch:
                 self.batchIndexTest = 0
-        return np.transpose(np.array(X), axes=[1, 2, 3, 4, 0]), self.one_hot(y)
+        return np.transpose(np.array(X), axes=[1, 2, 3, 4, 0]), self.one_hot(y), x_files
 
     def randomize(self):
         """ Randomizes the order of data samples"""
@@ -117,7 +131,7 @@ class DataGenerator:
         3    4    5
         6    7    8
         """
-        # Jitter the colour channel
+        # Jitter the colour channel, this is IMP
         image = self.color_channel_jitter(image)
 
         y_dim, x_dim = image.shape[:2]
@@ -126,7 +140,10 @@ class DataGenerator:
         crop_y = random.randrange(y_dim - self.cropSize)
         # Select which image ordering we'll use from the maximum hamming set
         perm_index = random.randrange(self.numClasses)
-        final_crops = np.zeros((self.tileSize, self.tileSize, self.numChannels, self.numCrops), dtype=np.float32)
+        final_crops = np.zeros((self.tileSize, self.tileSize, self.numChannels, self.numCrops), dtype=np.uint8)#np.float32)
+        # img1 = Image.fromarray(image.astype(np.uint8), 'RGB')
+        # img.save('my.png')
+        # img1.show()
         for row in range(3):
             for col in range(3):
                 x_start = crop_x + col * self.cellSize + random.randrange(self.cellSize - self.tileSize)
@@ -134,6 +151,10 @@ class DataGenerator:
                 # Put the crop in the list of pieces randomly according to the number picked
                 final_crops[:, :, :, self.maxHammingSet[perm_index, row * 3 + col]] = \
                     image[y_start:y_start + self.tileSize, x_start:x_start + self.tileSize, :]
+                # img1.close()
+                # img1 = Image.fromarray(final_crops.astype(np.uint8)[:,:,:,self.maxHammingSet[perm_index, row * 3 + col]], 'RGB')
+                # img.save('my.png')
+                # img1.show()
         return final_crops, perm_index
 
     def color_channel_jitter(self, image):
