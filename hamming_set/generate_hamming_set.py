@@ -21,10 +21,8 @@ def hamming_set(num_crops, num_permutations, selection, output_file_name):
             P = np.array(P_hat[j]).reshape([1, -1])
         else:
             P = np.concatenate([P, P_hat[j].reshape([1, -1])], axis=0)
-
         P_hat = np.delete(P_hat, j, axis=0)
         D = cdist(P, P_hat, metric='hamming').mean(axis=0).flatten()
-
         if selection == 'max':
             j = D.argmax()
         elif selection == 'mean':
@@ -32,7 +30,8 @@ def hamming_set(num_crops, num_permutations, selection, output_file_name):
             S = D.argsort()
             j = S[np.random.randint(m - 10, m + 10)]
 
-    h5f = h5py.File('./hamming_set/' + output_file_name + str(num_permutations) + '.h5', 'w')
+    h5f = h5py.File('./hamming_set/' + output_file_name , 'w')
+    # h5f = h5py.File('./hamming_set/' + output_file_name + str(num_permutations) + '.h5', 'w')
     h5f.create_dataset('max_hamming_set', data=P)
     h5f.close()
     print('file created --> ' + output_file_name + str(num_permutations) + '.h5')
@@ -40,6 +39,6 @@ def hamming_set(num_crops, num_permutations, selection, output_file_name):
 
 if __name__ == "__main__":
     hamming_set(num_crops=9,
-                num_permutations=100,
+                num_permutations=10,
                 selection='max',
                 output_file_name='max_hamming_set_')
