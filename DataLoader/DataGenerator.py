@@ -79,8 +79,9 @@ class DataGenerator:
         if mode == 'train':
             h5f = h5py.File(self.data_path, 'r')
             x = h5f['train_img']
-            x = x[self.batchIndexTrain * self.batchSize:(self.batchIndexTrain + 1) * self.batchSize, ...]
-            x_files = h5f['train_files'][self.batchIndexTrain * self.batchSize:(self.batchIndexTrain + 1) * self.batchSize]
+            x = x[self.batchIndexTrain * self.batchSize:min((self.batchIndexTrain + 1) * self.batchSize,x.shape[0]), ...]
+            x_files = h5f['train_files']
+            x_files=x_files[self.batchIndexTrain * self.batchSize:min((self.batchIndexTrain + 1) * self.batchSize,x_files.shape[0])]
             # img1 = Image.fromarray(x[0], 'RGB')
             # img.save('my.png')
             # img1.show()
@@ -91,8 +92,10 @@ class DataGenerator:
                 self.batchIndexTrain = 0
         elif mode == 'valid':
             h5f = h5py.File(self.data_path, 'r')
-            x = h5f['val_img'][self.batchIndexVal * self.batchSize:(self.batchIndexVal + 1) * self.batchSize, ...]
-            x_files = h5f['val_files'][self.batchIndexVal * self.batchSize:(self.batchIndexVal + 1) * self.batchSize]
+            x = h5f['val_img']
+            x=x[self.batchIndexVal * self.batchSize:min((self.batchIndexVal + 1) * self.batchSize,x.shape[0]), ...]
+            x_files = h5f['val_files']
+            x_files=x_files[self.batchIndexVal * self.batchSize:min((self.batchIndexVal + 1) * self.batchSize,x_files[0])]
             h5f.close()
             X, y = self.__data_generation_normalize(x.astype(np.float32))
             self.batchIndexVal += 1  # Increment the batch index
